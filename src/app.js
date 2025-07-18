@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('./middlewares/cors'); // ✅ si tienes el archivo custom
+const cors = require('./middleware/cors');
 // const cors = require('cors'); // ✅ o usa esta línea si prefieres directamente
 
 const authRoutes = require('./routes/authRoutes');
