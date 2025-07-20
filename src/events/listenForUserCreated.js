@@ -1,4 +1,5 @@
 const amqp = require('amqplib');
+const bcrypt = require('bcrypt');
 const { createUser } = require('../models/userModel');
 
 module.exports = async function listenForUserCreated() {
@@ -12,7 +13,7 @@ module.exports = async function listenForUserCreated() {
     const data = JSON.parse(msg.content.toString());
     console.log('📥 Received user_created event:', data);
 
-    // Validar campos antes de insertar
+    // Validar campos
     if (!data.username || !data.password) {
       console.error('⚠️ Datos incompletos en el evento, ignorado:', data);
       channel.ack(msg);
@@ -20,7 +21,9 @@ module.exports = async function listenForUserCreated() {
     }
 
     try {
-      await createUser(data.username, data.password);
+      
+      const hashedPassword = await bcrypt.hash(data.password, 10);
+      await createUser(data.username, hashedPassword);
       console.log(`✅ Usuario insertado en auth_db: ${data.username}`);
     } catch (err) {
       console.error('🚨 Error insertando en auth_db:', err);
