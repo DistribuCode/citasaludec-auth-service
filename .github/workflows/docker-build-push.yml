@@ -30,18 +30,53 @@ jobs:
           tags: jeffri1997/auth-service:qa
 
   deploy:
-    runs-on: ubuntu-latest
     needs: build-and-push
+    runs-on: ubuntu-latest
 
     steps:
-      - name: 🚀 Deploy to EC2 via SSH
+      - name: 🚀 Deploy auth-service to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_KEY }}
           script: |
+            echo "🔧 Crear red si no existe"
+            docker network create my_network || true
+
+            echo "🐇 Desplegar RabbitMQ"
+            docker stop rabbitmq || true && docker rm rabbitmq || true
+            docker run -d --name rabbitmq --network my_network \
+              -p 5672:5672 -p 15672:15672 \
+              rabbitmq:3-management
+
+            echo "🐘 Desplegar PostgreSQL (auth-db)"
+            docker stop auth-db || true && docker rm auth-db || true
+            docker volume create auth_data || true
+            docker run -d --name auth-db --network my_network \
+              -e POSTGRES_DB=auth_db \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=mysecretpassword \
+              -v auth_data:/var/lib/postgresql/data \
+              postgres:15
+
+            echo "⏳ Esperando que inicien los servicios..."
+            sleep 10
+
+            echo "🔄 Desplegar auth-service"
+            docker stop auth-service || true && docker rm auth-service || true
             docker pull jeffri1997/auth-service:qa
-            docker stop auth-service || true
-            docker rm auth-service || true
-            docker run -d --name auth-service -p 3001:3001 jeffri1997/auth-service:qa
+            docker run -d --name auth-service --network my_network \
+              -p 3001:3001 \
+              -e PORT=3001 \
+              -e DB_HOST=auth-db \
+              -e DB_PORT=5432 \
+              -e DB_USER=postgres \
+              -e DB_PASSWORD=mysecretpassword \
+              -e DB_NAME=auth_db \
+              -e JWT_SECRET=supersecretkey \
+              -e AMQP_URL=amqp://rabbitmq \
+              jeffri1997/auth-service:qa
+
+            echo "✅ Servicios desplegados correctamente:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
